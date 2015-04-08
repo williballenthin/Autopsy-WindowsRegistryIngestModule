@@ -13,10 +13,9 @@ import java.util.LinkedList;
 import java.util.List;
 import org.netbeans.api.progress.ProgressHandle;
 import org.sleuthkit.autopsy.casemodule.services.FileManager;
-import org.sleuthkit.autopsy.ingest.IngestModuleAbstractFile;
+import org.sleuthkit.autopsy.ingest.IngestJobContext;
 import org.sleuthkit.autopsy.ingest.IngestServices;
 import org.sleuthkit.autopsy.ingest.ModuleContentEvent;
-import org.sleuthkit.autopsy.ingest.PipelineContext;
 import org.sleuthkit.datamodel.AbstractFile;
 import org.sleuthkit.datamodel.DerivedFile;
 import org.sleuthkit.datamodel.TskCoreException;
@@ -26,7 +25,7 @@ class NewDerivedFileHandler {
     private final String _moduleName;
     private final Counter _processedItems;
     private final ProgressHandle _progress;
-    private final PipelineContext<IngestModuleAbstractFile> _pipelineContext;
+    private final IngestJobContext _pipelineContext;
     private final AbstractFile _hiveFile;   
     private final FileManager _fileManager;
     private IngestServices _services;
@@ -34,7 +33,7 @@ class NewDerivedFileHandler {
     
 public NewDerivedFileHandler(String moduleName, ProgressHandle progress, 
             Counter processedItems, 
-            PipelineContext<IngestModuleAbstractFile> pipelineContext, 
+            IngestJobContext pipelineContext,
             FileManager fileManager, IngestServices services, 
             AbstractFile hiveFile) {
         this._progress = progress;
@@ -49,9 +48,7 @@ public NewDerivedFileHandler(String moduleName, ProgressHandle progress,
 
     public void commit() {
         synchronized(this) {
-            for (AbstractFile newFile : this._newFiles) {
-                this._services.scheduleFile(newFile, this._pipelineContext);
-            }
+            this._pipelineContext.addFilesToJob(this._newFiles);
             this._services.fireModuleContentEvent(new ModuleContentEvent(this._hiveFile));                      
             this._newFiles = new LinkedList<AbstractFile>();
         }                
