@@ -95,29 +95,12 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
     private static final Logger logger = Logger.getLogger(WindowsRegistryInjestModule.class.getName());    
     
     private IngestServices services;  ///< services is the manager for interacting with the rest of Autopsy.
-    private volatile int messageID = 0;  ///< messageID is used to ensure error messages are unique when posted.
     private boolean initialized = false;  ///< initialized is set once the singleton has been constructed.
     private static WindowsRegistryInjestModule instance = null;  ///< instance is the singleton instance.
     private String unpackDirAbsPath; ///< unpackDirAbsPath is the absolute path to a case and module specific directory for unpacking Registry hive data.
     private FileManager fileManager; ///< fileManager organizes access to case files.
     private IngestJobContext context;
    
-    /**
-     * Private constructor ensures singleton instance.
-     */
-    private WindowsRegistryInjestModule() {  }
-
-    /**
-     * Returns singleton instance of the module, creates one if needed.
-     *
-     * @return instance of this class.
-     */
-    public static synchronized WindowsRegistryInjestModule getDefault() {
-        if (instance == null) {
-            instance = new WindowsRegistryInjestModule();
-        }
-        return instance;
-    }
 
     @Override
     public void startUp(IngestJobContext context) throws IngestModuleException {

@@ -11,6 +11,7 @@ import org.sleuthkit.autopsy.ingest.IngestModuleIngestJobSettings;
 @ServiceProvider(service = IngestModuleFactory.class)
 public class WindowsRegistryModuleFactory extends IngestModuleFactoryAdapter {
 
+    public static final String MODULE_VERSION = "1.0";
     static String getModuleName() {
         return NbBundle.getMessage(WindowsRegistryInjestModule.class, "WindowsRegistryModule.moduleName");
     }
@@ -27,7 +28,7 @@ public class WindowsRegistryModuleFactory extends IngestModuleFactoryAdapter {
 
     @Override
     public String getModuleVersionNumber() {
-        return Version.getVersion();
+        return MODULE_VERSION;
     }
 
     @Override
@@ -37,6 +38,6 @@ public class WindowsRegistryModuleFactory extends IngestModuleFactoryAdapter {
 
     @Override
     public FileIngestModule createFileIngestModule(IngestModuleIngestJobSettings ingestOptions) {
-        return WindowsRegistryInjestModule.getDefault();
+        return new WindowsRegistryInjestModule();
     }
 }
