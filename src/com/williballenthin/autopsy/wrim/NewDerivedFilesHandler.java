@@ -25,7 +25,7 @@ class NewDerivedFileHandler {
     private final String _moduleName;
     private final Counter _processedItems;
     private final ProgressHandle _progress;
-    private final IngestJobContext _pipelineContext;
+    private final IngestJobContext _ingestJobContext;
     private final AbstractFile _hiveFile;   
     private final FileManager _fileManager;
     private IngestServices _services;
@@ -33,13 +33,13 @@ class NewDerivedFileHandler {
     
 public NewDerivedFileHandler(String moduleName, ProgressHandle progress, 
             Counter processedItems, 
-            IngestJobContext pipelineContext,
+            IngestJobContext ingestJobContext,
             FileManager fileManager, IngestServices services, 
             AbstractFile hiveFile) {
         this._progress = progress;
         this._processedItems = processedItems;
         this._newFiles = new LinkedList<AbstractFile>();
-        this._pipelineContext = pipelineContext;
+        this._ingestJobContext = ingestJobContext;
         this._hiveFile = hiveFile;
         this._fileManager = fileManager;
         this._services = services;
@@ -48,7 +48,7 @@ public NewDerivedFileHandler(String moduleName, ProgressHandle progress,
 
     public void commit() {
         synchronized(this) {
-            this._pipelineContext.addFilesToJob(this._newFiles);
+            this._ingestJobContext.addFilesToJob(this._newFiles);
             this._services.fireModuleContentEvent(new ModuleContentEvent(this._hiveFile));                      
             this._newFiles = new LinkedList<AbstractFile>();
         }                

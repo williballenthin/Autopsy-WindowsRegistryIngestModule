@@ -110,27 +110,26 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
         logger.log(Level.INFO, "init()");
         services = IngestServices.getInstance();
         this.context = context;
-        initialized = false;
+        jobId = context.getJobId();
 
-        final Case currentCase = Case.getCurrentCase();
-        unpackDirAbsPath = currentCase.getModulesOutputDirAbsPath() + File.separator + WindowsRegistryModuleFactory.getModuleName();
-        fileManager = currentCase.getServices().getFileManager();
+        if (refCounter.incrementAndGet(jobId) == 1) {
+            final Case currentCase = Case.getCurrentCase();
+            unpackDirAbsPath = currentCase.getModulesOutputDirAbsPath() + File.separator + WindowsRegistryModuleFactory.getModuleName();
+            fileManager = currentCase.getServices().getFileManager();
 
-        File unpackDirPathFile = new File(unpackDirAbsPath);
-        if (!unpackDirPathFile.exists()) {
-            try {
-                logger.log(Level.INFO, "Creating module output directory: {0}", unpackDirAbsPath);
-                unpackDirPathFile.mkdirs();
-            } catch (SecurityException e) {
-                logger.log(Level.SEVERE, "Error initializing output dir: " + unpackDirAbsPath, e);
-                String msg = "Error initializing " + WindowsRegistryModuleFactory.getModuleName();
-                String details = "Error initializing output dir: " + unpackDirAbsPath + ": " + e.getMessage();
-                services.postMessage(IngestMessage.createErrorMessage(WindowsRegistryModuleFactory.getModuleName(), msg, details));
-                return;
+            File unpackDirPathFile = new File(unpackDirAbsPath);
+            if (!unpackDirPathFile.exists()) {
+                try {
+                    logger.log(Level.INFO, "Creating module output directory: {0}", unpackDirAbsPath);
+                    unpackDirPathFile.mkdirs();
+                } catch (SecurityException e) {
+                    logger.log(Level.SEVERE, "Error initializing output dir: " + unpackDirAbsPath, e);
+                    String msg = "Error initializing " + WindowsRegistryModuleFactory.getModuleName();
+                    String details = "Error initializing output dir: " + unpackDirAbsPath + ": " + e.getMessage();
+                    services.postMessage(IngestMessage.createErrorMessage(WindowsRegistryModuleFactory.getModuleName(), msg, details));
+                }
             }
         }
-        initialized = true;
-        jobId = context.getJobId();
     }
 
     /**
@@ -233,8 +232,9 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
 
     @Override
     public void shutDown() {
-        logger.log(Level.INFO, "complete()");
-        refCounter.decrementAndGet(jobId);
+        if (refCounter.decrementAndGet(jobId) == 0) {
+            logger.log(Level.INFO, "complete()");
+        }
     }
     /**
      * An exception to throw when a key extracts to the same path that a value
@@ -256,7 +256,7 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
     public ProcessResult process(AbstractFile abstractFile_) {
         final AbstractFile hiveFile = abstractFile_;
 
-        if (initialized == false) { //error initializing the module
+        if (refCounter.get(jobId) == 0) { //error initializing the module
             logger.log(Level.WARNING, "Skipping processing, module not initialized, file: {0}", hiveFile.getName());
             return ProcessResult.OK;
         }
