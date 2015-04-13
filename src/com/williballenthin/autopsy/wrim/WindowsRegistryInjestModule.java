@@ -48,6 +48,7 @@ import org.sleuthkit.autopsy.casemodule.Case;
 import org.sleuthkit.autopsy.casemodule.services.FileManager;
 import org.sleuthkit.autopsy.ingest.IngestJobContext;
 import org.sleuthkit.autopsy.ingest.IngestMessage;
+import org.sleuthkit.autopsy.ingest.IngestModuleReferenceCounter;
 import org.sleuthkit.datamodel.TskCoreException;
 import org.sleuthkit.datamodel.TskException;
 
@@ -100,6 +101,8 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
     private String unpackDirAbsPath; ///< unpackDirAbsPath is the absolute path to a case and module specific directory for unpacking Registry hive data.
     private FileManager fileManager; ///< fileManager organizes access to case files.
     private IngestJobContext context;
+    private final static IngestModuleReferenceCounter refCounter = new IngestModuleReferenceCounter();
+    private long jobId;
    
 
     @Override
@@ -127,6 +130,7 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
             }
         }
         initialized = true;
+        jobId = context.getJobId();
     }
 
     /**
@@ -230,9 +234,7 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
     @Override
     public void shutDown() {
         logger.log(Level.INFO, "complete()");
-        if (initialized == false) {
-            return;
-        }
+        refCounter.decrementAndGet(jobId);
     }
     /**
      * An exception to throw when a key extracts to the same path that a value
