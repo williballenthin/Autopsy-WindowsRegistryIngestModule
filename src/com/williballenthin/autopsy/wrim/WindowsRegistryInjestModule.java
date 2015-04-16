@@ -39,16 +39,16 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.logging.Level;
 import org.sleuthkit.autopsy.coreutils.Logger;
-import org.sleuthkit.autopsy.ingest.IngestModuleAbstractFile;
-import org.sleuthkit.autopsy.ingest.IngestModuleInit;
+import org.sleuthkit.autopsy.ingest.FileIngestModule;
 import org.sleuthkit.autopsy.ingest.IngestServices;
 import org.sleuthkit.datamodel.AbstractFile;
 import org.netbeans.api.progress.ProgressHandle;
 import org.netbeans.api.progress.ProgressHandleFactory;
 import org.sleuthkit.autopsy.casemodule.Case;
 import org.sleuthkit.autopsy.casemodule.services.FileManager;
-import org.sleuthkit.autopsy.ingest.PipelineContext;
+import org.sleuthkit.autopsy.ingest.IngestJobContext;
 import org.sleuthkit.autopsy.ingest.IngestMessage;
+import org.sleuthkit.autopsy.ingest.IngestModuleReferenceCounter;
 import org.sleuthkit.datamodel.TskCoreException;
 import org.sleuthkit.datamodel.TskException;
 
@@ -58,7 +58,7 @@ import org.sleuthkit.datamodel.TskException;
  *
  * Updates datamodel / directory tree with new files.
  */
-public final class WindowsRegistryInjestModule extends IngestModuleAbstractFile {
+public final class WindowsRegistryInjestModule implements FileIngestModule {
     
     
     /**
@@ -91,61 +91,45 @@ public final class WindowsRegistryInjestModule extends IngestModuleAbstractFile 
     private static final int MAX_HIVE_SIZE = ONE_HUNDRED_MEGABYTES;
     private static final int ONE_GIGABYTE = 1024 * 1024 * 1024;
     private static final String EXTRACTED_VALUE_EXTENSION = ".bin";
-    public static final String MODULE_NAME = "Windows Registry Extractor";
-    public static final String MODULE_DESCRIPTION = "Extracts Windows Registry hives, reschedules them to current ingest and populates directory tree with keys and values.";
-    public static final String MODULE_VERSION = "1.0";
     
     
     private static final Logger logger = Logger.getLogger(WindowsRegistryInjestModule.class.getName());    
     
     private IngestServices services;  ///< services is the manager for interacting with the rest of Autopsy.
-    private volatile int messageID = 0;  ///< messageID is used to ensure error messages are unique when posted.
     private boolean initialized = false;  ///< initialized is set once the singleton has been constructed.
     private static WindowsRegistryInjestModule instance = null;  ///< instance is the singleton instance.
     private String unpackDirAbsPath; ///< unpackDirAbsPath is the absolute path to a case and module specific directory for unpacking Registry hive data.
     private FileManager fileManager; ///< fileManager organizes access to case files.
+    private IngestJobContext context;
+    private final static IngestModuleReferenceCounter refCounter = new IngestModuleReferenceCounter();
+    private long jobId;
    
-    /**
-     * Private constructor ensures singleton instance.
-     */
-    private WindowsRegistryInjestModule() {  }
-
-    /**
-     * Returns singleton instance of the module, creates one if needed.
-     *
-     * @return instance of this class.
-     */
-    public static synchronized WindowsRegistryInjestModule getDefault() {
-        if (instance == null) {
-            instance = new WindowsRegistryInjestModule();
-        }
-        return instance;
-    }
 
     @Override
-    public void init(IngestModuleInit initContext) {
+    public void startUp(IngestJobContext context) throws IngestModuleException {
         logger.log(Level.INFO, "init()");
-        services = IngestServices.getDefault();
-        initialized = false;
+        services = IngestServices.getInstance();
+        this.context = context;
+        jobId = context.getJobId();
 
-        final Case currentCase = Case.getCurrentCase();
-        unpackDirAbsPath = currentCase.getModulesOutputDirAbsPath() + File.separator + MODULE_NAME;
-        fileManager = currentCase.getServices().getFileManager();
+        if (refCounter.incrementAndGet(jobId) == 1) {
+            final Case currentCase = Case.getCurrentCase();
+            unpackDirAbsPath = currentCase.getModulesOutputDirAbsPath() + File.separator + WindowsRegistryModuleFactory.getModuleName();
+            fileManager = currentCase.getServices().getFileManager();
 
-        File unpackDirPathFile = new File(unpackDirAbsPath);
-        if (!unpackDirPathFile.exists()) {
-            try {
-                logger.log(Level.INFO, "Creating module output directory: {0}", unpackDirAbsPath);
-                unpackDirPathFile.mkdirs();
-            } catch (SecurityException e) {
-                logger.log(Level.SEVERE, "Error initializing output dir: " + unpackDirAbsPath, e);
-                String msg = "Error initializing " + MODULE_NAME;
-                String details = "Error initializing output dir: " + unpackDirAbsPath + ": " + e.getMessage();
-                services.postMessage(IngestMessage.createErrorMessage(++messageID, instance, msg, details));
-                return;
+            File unpackDirPathFile = new File(unpackDirAbsPath);
+            if (!unpackDirPathFile.exists()) {
+                try {
+                    logger.log(Level.INFO, "Creating module output directory: {0}", unpackDirAbsPath);
+                    unpackDirPathFile.mkdirs();
+                } catch (SecurityException e) {
+                    logger.log(Level.SEVERE, "Error initializing output dir: " + unpackDirAbsPath, e);
+                    String msg = "Error initializing " + WindowsRegistryModuleFactory.getModuleName();
+                    String details = "Error initializing output dir: " + unpackDirAbsPath + ": " + e.getMessage();
+                    services.postMessage(IngestMessage.createErrorMessage(WindowsRegistryModuleFactory.getModuleName(), msg, details));
+                }
             }
         }
-        initialized = true;
     }
 
     /**
@@ -213,7 +197,7 @@ public final class WindowsRegistryInjestModule extends IngestModuleAbstractFile 
      * @return The case relative path that the resource would extract to.
      */
     private String getCaseRelativeExtractionDirectoryPathForFile(String derivedPath) {
-        return "ModuleOutput" + File.separator + MODULE_NAME + File.separator + derivedPath;
+        return "ModuleOutput" + File.separator + WindowsRegistryModuleFactory.getModuleName() + File.separator + derivedPath;
     }
     
     /**
@@ -244,7 +228,14 @@ public final class WindowsRegistryInjestModule extends IngestModuleAbstractFile 
         }
         return numItems;
     }
-    
+
+
+    @Override
+    public void shutDown() {
+        if (refCounter.decrementAndGet(jobId) == 0) {
+            logger.log(Level.INFO, "complete()");
+        }
+    }
     /**
      * An exception to throw when a key extracts to the same path that a value
      *   does.
@@ -262,11 +253,10 @@ public final class WindowsRegistryInjestModule extends IngestModuleAbstractFile 
     }
     
     @Override
-    public ProcessResult process(PipelineContext<IngestModuleAbstractFile> pipelineContext_, AbstractFile abstractFile_) {
-        final PipelineContext<IngestModuleAbstractFile> pipelineContext = pipelineContext_;
+    public ProcessResult process(AbstractFile abstractFile_) {
         final AbstractFile hiveFile = abstractFile_;
 
-        if (initialized == false) { //error initializing the module
+        if (refCounter.get(jobId) == 0) { //error initializing the module
             logger.log(Level.WARNING, "Skipping processing, module not initialized, file: {0}", hiveFile.getName());
             return ProcessResult.OK;
         }
@@ -305,9 +295,9 @@ public final class WindowsRegistryInjestModule extends IngestModuleAbstractFile 
         
         final ByteBuffer buf = ByteBuffer.wrap(data);
         final RegistryHive hive = new RegistryHiveBuffer(buf);
-        final ProgressHandle progress = ProgressHandleFactory.createHandle(MODULE_NAME);
+        final ProgressHandle progress = ProgressHandleFactory.createHandle(WindowsRegistryModuleFactory.getModuleName());
         final Counter processedItems = new Counter();
-        final NewDerivedFileHandler handler = new NewDerivedFileHandler(MODULE_NAME, progress, processedItems, pipelineContext, fileManager, services, hiveFile);
+        final NewDerivedFileHandler handler = new NewDerivedFileHandler(WindowsRegistryModuleFactory.getModuleName(), progress, processedItems, context, fileManager, services, hiveFile);
         final Deque<QueuedKey> queuedKeys = new LinkedList<QueuedKey>();
         final RegistryKey root;
         
@@ -487,38 +477,5 @@ public final class WindowsRegistryInjestModule extends IngestModuleAbstractFile 
         } catch (SecurityException e) {
             logger.log(Level.SEVERE, "Error setting up output path for unpacked file: " + localFile.getAbsolutePath(), e);
         }
-    }
-    
-    @Override
-    public void complete() {
-        logger.log(Level.INFO, "complete()");
-        if (initialized == false) {
-            return;
-        }
-    }
-
-    @Override
-    public void stop() {
-        logger.log(Level.INFO, "stop()");
-    }
-
-    @Override
-    public String getName() {
-        return MODULE_NAME;
-    }
-
-    @Override
-    public String getDescription() {
-        return MODULE_DESCRIPTION;
-    }
-
-    @Override
-    public String getVersion() {
-        return MODULE_VERSION;
-    }
-
-    @Override
-    public boolean hasBackgroundJobsRunning() {
-        return false;
     }
 }
