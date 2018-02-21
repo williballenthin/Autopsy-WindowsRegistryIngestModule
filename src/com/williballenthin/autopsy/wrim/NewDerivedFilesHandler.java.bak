@@ -19,7 +19,6 @@ import org.sleuthkit.autopsy.ingest.ModuleContentEvent;
 import org.sleuthkit.datamodel.AbstractFile;
 import org.sleuthkit.datamodel.DerivedFile;
 import org.sleuthkit.datamodel.TskCoreException;
-import org.sleuthkit.datamodel.TskData;
 
 class NewDerivedFileHandler {
     private final int BATCH_SIZE = 100;
@@ -71,7 +70,7 @@ public NewDerivedFileHandler(String moduleName, ProgressHandle progress,
                     0, 0, 0, mtime,
                     isFile, 
                     parent, 
-                    "", this._moduleName, "", "", TskData.EncodingType.NONE);
+                    "", this._moduleName, "", "");
         } catch (TskCoreException ex) {
             throw new FailedToAddDerivedFileException();
         }

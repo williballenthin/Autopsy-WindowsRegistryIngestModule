@@ -38,6 +38,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.logging.Level;
+import java.util.regex.Pattern;
 import org.sleuthkit.autopsy.coreutils.Logger;
 import org.sleuthkit.autopsy.ingest.FileIngestModule;
 import org.sleuthkit.autopsy.ingest.IngestServices;
@@ -140,7 +141,7 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
      * @return True if we'd like to process the file, False otherwise.
      */
     private boolean isSupported(AbstractFile abstractFile) {
-        logger.log(Level.INFO, "isSupported: {0}", this);
+        //logger.log(Level.INFO, "isSupported: {0}", this);
         if (abstractFile == null) {
             return false;
         }
@@ -148,8 +149,11 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
         if (abstractFile.isFile() == false) {
             return false;
         }
-        
-        if (abstractFile.getSize() == 0 || abstractFile.getSize() > MAX_HIVE_SIZE) {
+ 
+//   Put this in to do all registry files.
+        if (abstractFile.getSize() == 0) {
+      
+//        if (abstractFile.getSize() == 0 || abstractFile.getSize() > MAX_HIVE_SIZE) {
             return false;
         }
         
@@ -184,7 +188,11 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
      * @return An absolute path that the resource should be extracted to.
      */
     private String getExtractionDirectoryPathForFile(String derivedPath) {
-        return unpackDirAbsPath + File.separator + derivedPath;
+            final Case currentCase = Case.getCurrentCase();
+            unpackDirAbsPath = currentCase.getModulesOutputDirAbsPath() + File.separator + WindowsRegistryModuleFactory.getModuleName();
+            fileManager = currentCase.getServices().getFileManager();        
+            return unpackDirAbsPath + File.separator + derivedPath;
+
     }    
     
     /**
@@ -246,10 +254,21 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
     
         
     private String sanitizePathComponent(String s) throws UnsupportedEncodingException {
-        if ( ! s.matches("[a-zA-Z0-9\\.\\*\\-_]")) {
-            return URLEncoder.encode(s, "UTF-8");
+        String newStr = s.replaceAll("\\*+", "_");
+
+        /* According to MSDN article you cannot have a file named these:
+        CON, PRN, AUX, NUL, COM1, COM2, COM3, COM4, COM5, COM6, COM7, COM8, 
+        COM9, LPT1, LPT2, LPT3, LPT4, LPT5, LPT6, LPT7, LPT8, and LPT9
+        */
+        String newStr1 = newStr.replaceAll("aux", "aux_");
+        String newStr2 = newStr1.replaceAll("AUX", "AUX_");
+        String newStr3 = newStr2.replaceAll("PRN", "PRN_");
+        String newStr4 = newStr3.replaceAll("COM3", "COM3_");
+        String newStr5 = newStr4.replaceAll("CON", "CON_");
+        if ( ! newStr5.matches("[a-zA-Z0-9\\.\\-_]")) {
+            return URLEncoder.encode(newStr5, "UTF-8");
         }
-        return s;
+        return newStr5;
     }
     
     @Override
@@ -278,7 +297,8 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
         final String hive_extraction_directory = getExtractionDirectoryPathForFile(hive_filename);
         
         if ((new File(hive_extraction_directory)).exists()) {
-            logger.log(Level.INFO, "Hive already has been processed as it has children and local unpacked file, skipping: {0}", hiveFile.getName());
+            logger.log(Level.INFO, "Hive already has been processed as it has children and local unpacked file, skipping: {0}", hive_filename);
+            logger.log(Level.INFO, "hive_extraction_directory ==> {0}", hive_extraction_directory);
             return ProcessResult.OK;
         }
 
@@ -313,7 +333,7 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
             root = hive.getRoot();
             queuedKeys.add(new QueuedKey(hiveFile, "", hive_filename, root));            
         } catch (RegistryParseException ex) {
-            logger.log(Level.WARNING, "Error parsing registry hive (can't get the root key)");
+            logger.log(Level.WARNING, "Error parsing registry hive (can't get the root key): {0}", hive_filename);
             // don't need to leave here, cause we know the queue is empty
         }
 
@@ -371,6 +391,12 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
                     } catch (RegistryParseException ex) {
                         logger.log(Level.WARNING, "Error parsing registry hive (parse)");
                         continue;
+                    } catch (Exception e) {
+                        logger.log(Level.WARNING, "Error parsing registry hive unknown registry value type");
+                        //logger.log(Level.WARNING, "Error in valueName ==> {0}" + value.getName());   
+                        //logger.log(Level.WARNING, "Error Valuepath ==> {0}" + valueFileSystemPath);
+                        logger.log(Level.WARNING, "Exception is ==> {0}", e);
+                        continue;
                     }
                     valueFileSystemPath = keyFileSystemPath + File.separator + valueSanitizedName + EXTRACTED_VALUE_EXTENSION;
                     valueData.position(0x0);  
@@ -419,6 +445,7 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
      * @throws com.williballenthin.autopsy.wrim.WindowsRegistryInjestModule.PathAlreadyExistsException If the path already exists for a *key* with the same name.
      */
     private void dropLocalFile(String path, ByteBuffer content) throws PathAlreadyExistsException {
+        
         File localFile = new java.io.File(path);
 
         if (localFile.exists() && localFile.isDirectory()) {
@@ -430,25 +457,35 @@ public final class WindowsRegistryInjestModule implements FileIngestModule {
         }
         
         try {
+            if (localFile.getAbsolutePath().contains("D:\\Autopsy_Cases\\Registry_Test_m1\\ModuleOutput\\Windows Registry Module\\SYSTEM_58\\ROOT\\ControlSet001\\Control\\Class\\%7B4d36e96c-e325-11ce-bfc1-08002be10318%7D\\0000\\Drivers\\aux\\wdmaud.drv\\Driver.bin")) {
+                    
+                logger.log(Level.SEVERE, "XXXXXX");
+                        
+            }
             localFile.getParentFile().mkdirs();
             localFile.createNewFile();
         } catch (SecurityException e) {
             logger.log(Level.SEVERE, "Error setting up output path for unpacked file: " + localFile.getAbsolutePath(), e);
             return;
         } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Error creating extracted file: " + localFile.getAbsolutePath(), ex);
+            logger.log(Level.SEVERE, "Error creating extracted file: " + localFile.getAbsolutePath() + " IoException is ==> " + ex.getMessage(), ex);
             return;
         }
         
         try {
+            if (localFile.getAbsolutePath().contains("D:\\Autopsy_Cases\\Registry_Test_m1\\ModuleOutput\\Windows Registry Module\\SYSTEM_58\\ROOT\\ControlSet001\\Control\\Session+Manager\\DOS+Devices\\AUX.bin")) {
+                    
+                logger.log(Level.SEVERE, "XXXXXX");
+                        
+            }
             FileChannel chan = new FileOutputStream(localFile, false).getChannel();
             content.position(0x0);
             chan.write(content);
             chan.close();
         } catch (FileNotFoundException ex) {
-            logger.log(Level.SEVERE, "Error writing derived file contents: " + localFile.getAbsolutePath(), ex);
+            logger.log(Level.SEVERE, "Error writing derived file contents File Not Found: " + localFile.getAbsolutePath(), ex);
         } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Error writing derived file contents: " + localFile.getAbsolutePath(), ex);
+            logger.log(Level.SEVERE, "Error writing derived file contents IO Exception: " + localFile.getAbsolutePath(), ex);
         }
     }
     
